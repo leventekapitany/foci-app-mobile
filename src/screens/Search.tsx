@@ -4,20 +4,21 @@ import styled from 'styled-components/native';
 import { SearchBar, Button } from '@rneui/themed';
 import { useDebounce } from 'use-debounce';
 
+const FADE_DURATION = 200;
+
 export default function Search() {
   const [search, setSearch] = useState<string>('');
   const [results, setResults] = useState<any[]>([]);
   const [debouncedSearch] = useDebounce(search, 200);
 
   const [loading, setLoading] = useState<boolean>(false);
-  const [loadedImageCount, setLoadedImageCount] = useState<number>(0);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const fadeIn = () => {
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 100,
+      duration: FADE_DURATION,
       useNativeDriver: true,
     }).start();
   };
@@ -25,9 +26,19 @@ export default function Search() {
   function reset() {
     fadeAnim.resetAnimation();
     setResults([]);
-    setLoadedImageCount(0);
     setLoading(false);
   }
+
+  useEffect(() => {
+    if (loading) {
+      fadeAnim.setValue(0);
+    }
+  }, [loading]);
+
+  useEffect(() => {
+    setLoading(false);
+    fadeIn();
+  }, [results]);
 
   useEffect(() => {
     if (search) {
@@ -47,17 +58,18 @@ export default function Search() {
 
   async function searchTeams() {
     const response = await fetch(`${teamEndpoint}/${search}?limit=2`);
-    const result = await response.json();
+    const results: any[] = await response.json();
 
-    setResults(result);
-  }
+    for await (const result of results) {
+      const imgUrl = result.team?.logo;
 
-  function imagesLoaded() {
-    const loaded = loadedImageCount === results.length;
-    if (loaded) {
-      fadeIn();
+      const response = await fetch(imgUrl);
+      const blob = await response.blob();
+
+      result.logo = URL.createObjectURL(blob);
     }
-    return loaded;
+
+    setResults(results);
   }
 
   return (
@@ -78,17 +90,14 @@ export default function Search() {
           <Animated.View key={result._id} style={{ opacity: fadeAnim }}>
             <Result
               style={{
-                backgroundColor: imagesLoaded() ? 'white' : 'transparent',
+                backgroundColor: !loading ? 'white' : 'transparent',
               }}
             >
               <Image
-                source={{ uri: result.team?.logo }}
-                onLoadEnd={() => {
-                  setLoadedImageCount((prevCount) => prevCount + 1);
-                }}
+                source={{ uri: result.logo }}
                 style={{ height: 24, width: 24 }}
               />
-              {imagesLoaded() ? <Name>{result.team?.name}</Name> : null}
+              <Name>{result.team?.name}</Name>
             </Result>
           </Animated.View>
         ))
